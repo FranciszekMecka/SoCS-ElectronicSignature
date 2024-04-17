@@ -1,111 +1,125 @@
-import os
-
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
-from Crypto.Random import get_random_bytes
-from Crypto.Cipher import AES
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Protocol.KDF import PBKDF2
 
 
-def encrypt_private_key(private_key_bytes, pin):
-    """
-    Encrypts the private key bytes using AES with the provided PIN.
+class Encryptor:
+    def __init__(self):
+        # Initialize a fixed salt for key derivation
+        self.salt = b"P\x0c&\x8e\xf3c\x8b\xdd\x00.y\xa3D:\x82\x88\xea\xfc\xe3\xd8*\x1d\xa0h'\xc1 x\x1a\x9e\xe6\xf9"
 
-    Parameters:
-        private_key_bytes (bytes): Serialized private key.
-        pin (bytes): PIN as bytes.
+    def encrypt_private_key(self, private_key_bytes, pin):
+        """
+        Encrypts a private key using AES encryption.
 
-    Returns:
-        bytes: Encrypted private key bytes.
-    """
-    # random 32-bit salt
-    salt = b"P\x0c&\x8e\xf3c\x8b\xdd\x00.y\xa3D:\x82\x88\xea\xfc\xe3\xd8*\x1d\xa0h'\xc1 x\x1a\x9e\xe6\xf9"
+        Args:
+            private_key_bytes (bytes): The private key bytes to encrypt.
+            pin (str): The PIN to derive the encryption key.
 
-    # Derive a key from the PIN using PBKDF2
-    key = PBKDF2(pin, salt, dkLen=32)  # 32 bytes for AES-256
+        Returns:
+            bytes: The encrypted private key.
+        """
+        key = PBKDF2(pin, self.salt, dkLen=32)  # 32 bytes for AES-256
+        cipher = AES.new(key, AES.MODE_CBC)
+        encrypted_private_key = cipher.encrypt(pad(private_key_bytes, AES.block_size))
+        return cipher.iv + encrypted_private_key
 
-    # Create AES cipher with the derived key
-    cipher = AES.new(key, AES.MODE_CBC)
+    def decrypt_private_key(self, encrypted_private_key, pin):
+        """
+        Decrypts an encrypted private key using AES decryption.
 
-    # Encrypt the padded private key bytes
-    encrypted_private_key = cipher.encrypt(pad(private_key_bytes, AES.block_size))
+        Args:
+            encrypted_private_key (bytes): The encrypted private key.
+            pin (str): The PIN to derive the decryption key.
 
-    return cipher.iv + encrypted_private_key
+        Returns:
+            bytes: The decrypted private key.
+        """
+        iv = encrypted_private_key[:16]
+        encrypted_data = encrypted_private_key[16:]
+        key = PBKDF2(pin, self.salt, dkLen=32)
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        decrypted_private_key = cipher.decrypt(encrypted_data)
+        return unpad(decrypted_private_key, AES.block_size)
 
+    def generate_key_pair(self):
+        """
+        Generates a new RSA key pair.
 
-def decrypt_private_key(encrypted_private_key, pin):
-    """
-    Decrypts the encrypted private key bytes using AES with the provided PIN and salt.
+        Returns:
+            tuple: A tuple containing bytes of  private key and the public key.
+        """
+        rsa_keys = RSA.generate(4096)
+        private_key = rsa_keys.exportKey()
+        public_key = rsa_keys.publickey().exportKey()
+        return private_key, public_key
 
-    Parameters:
-        encrypted_private_key (bytes): Encrypted private key bytes.
-        pin (bytes): PIN as bytes.
-        salt (bytes): Salt used for key derivation.
+    def write_key(self, file_path, key, pin=None):
+        """
+        Writes a key (private or public) to a file.
 
-    Returns:
-        bytes: Decrypted private key bytes.
-    """
-    # Extract IV from the encrypted private key
-    iv = encrypted_private_key[:16]
+        Args:
+            file_path (str): The path to the file to write the key to.
+            key (bytes): The key bytes to write.
+            pin (str): The PIN to use for encrypting the private key, if applicable.
+        """
+        if pin is not None:
+            key = self.encrypt_private_key(key, pin)
+        with open(file_path, 'wb') as f:
+            f.write(key)
 
-    # Extract the encrypted private key bytes (excluding IV)
-    encrypted_data = encrypted_private_key[16:]
+    def read_key(self, file_path, pin=None):
+        """
+        Reads a key (private or public) from a file.
 
-    salt = b"P\x0c&\x8e\xf3c\x8b\xdd\x00.y\xa3D:\x82\x88\xea\xfc\xe3\xd8*\x1d\xa0h'\xc1 x\x1a\x9e\xe6\xf9"
+        Args:
+            file_path (str): The path to the file to read the key from.
+            pin (str, optional): The PIN to use for decrypting the private key, if applicable.
 
-    # Derive the key from the PIN using PBKDF2
-    key = PBKDF2(pin, salt, dkLen=32)
+        Returns:
+            bytes: The key bytes read from the file.
+        """
+        with open(file_path, 'rb') as f:
+            bytes_key = f.read()
+        if pin is not None:
+            try:
+                bytes_key = self.decrypt_private_key(bytes_key, pin)
+            except ValueError:
+                print('Given PIN is incorrect.')
+                return
+        return RSA.import_key(bytes_key)
 
-    # Create AES cipher with the derived key and IV
-    cipher = AES.new(key, AES.MODE_CBC, iv)
+    def encrypt_file(self, file_path_to_encrypt, output_file_path, recipient_public_key):
+        with open(file_path_to_encrypt, 'rb') as f:
+            data = f.read()
+        cipher_rsa = PKCS1_OAEP.new(recipient_public_key)
+        encrypted_data = cipher_rsa.encrypt(data)
 
-    # Decrypt the private key bytes
-    decrypted_private_key = cipher.decrypt(encrypted_data)
+        #         this will need to be replaced by gui
+        with open(output_file_path, 'wb') as f:
+            data = f.write(encrypted_data)
 
-    # Unpad the decrypted data
-    return unpad(decrypted_private_key, AES.block_size)
+    def decrypt_file(self, file_path_to_decrypt, output_file_path, recipient_private_key):
+        with open(file_path_to_decrypt, 'rb') as f:
+            data = f.read()
+        cipher_rsa = PKCS1_OAEP.new(recipient_private_key)
+        decrypted_data = cipher_rsa.decrypt(data)
 
-
-# Generate an RSA key pair
-def generate_key_pair(pin):
-    """
-    Generate a new RSA key pair and encrypt the private key using AES with the provided PIN.
-
-    Returns:
-        tuple: (encrypted_private_key, public_key) as serialized bytes.
-    """
-    # Generate RSA key pair
-    rsa_key_pair = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=4096,
-        backend=default_backend()
-    )
-
-    # Serialize the private key
-    private_key_bytes = rsa_key_pair.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-
-    encrypted_private_key_bytes = encrypt_private_key(private_key_bytes, pin)
-
-    # Serialize the public key
-    public_key = rsa_key_pair.public_key()
-    public_key_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    )
-
-    return encrypted_private_key_bytes, public_key_bytes
+        #         this will need to be replaced by gui
+        with open(output_file_path, 'wb') as f:
+            data = f.write(decrypted_data)
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    keys = generate_key_pair(b'1234')
-    for k in keys:
-        print(k)
+    encryptor = Encryptor()
+    # keys = encryptor.generate_key_pair()
+    # for k in keys:
+    #     print(k)
 
-    print(decrypt_private_key(keys[0], b'1234'))
+    private_key = encryptor.read_key("private.pem", '1234')
+
+    public_key = encryptor.read_key("public.pem")
+    encryptor.encrypt_file("wiosna.txt", "wiosna_encrypted.bin", public_key)
+    encryptor.decrypt_file("wiosna_encrypted.bin", "wiosna1.txt", private_key)

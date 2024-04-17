@@ -2,6 +2,8 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Util.Padding import pad, unpad
 from Crypto.Protocol.KDF import PBKDF2
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA384
 
 
 class Encryptor:
@@ -43,7 +45,8 @@ class Encryptor:
         decrypted_private_key = cipher.decrypt(encrypted_data)
         return unpad(decrypted_private_key, AES.block_size)
 
-    def generate_key_pair(self):
+    @staticmethod
+    def generate_key_pair():
         """
         Generates a new RSA key pair.
 
@@ -90,7 +93,10 @@ class Encryptor:
                 return
         return RSA.import_key(bytes_key)
 
-    def encrypt_file(self, file_path_to_encrypt, output_file_path, recipient_public_key):
+    # https://pycryptodome.readthedocs.io/en/latest/src/examples.html#encrypt-data-with-rsa ask how to
+    # handle 'limitless files'
+    @staticmethod
+    def encrypt_file(file_path_to_encrypt, output_file_path, recipient_public_key):
         with open(file_path_to_encrypt, 'rb') as f:
             data = f.read()
         cipher_rsa = PKCS1_OAEP.new(recipient_public_key)
@@ -100,7 +106,8 @@ class Encryptor:
         with open(output_file_path, 'wb') as f:
             data = f.write(encrypted_data)
 
-    def decrypt_file(self, file_path_to_decrypt, output_file_path, recipient_private_key):
+    @staticmethod
+    def decrypt_file(file_path_to_decrypt, output_file_path, recipient_private_key):
         with open(file_path_to_decrypt, 'rb') as f:
             data = f.read()
         cipher_rsa = PKCS1_OAEP.new(recipient_private_key)
@@ -110,8 +117,29 @@ class Encryptor:
         with open(output_file_path, 'wb') as f:
             data = f.write(decrypted_data)
 
+    @staticmethod
+    def sign_document(file_to_sign, output_signature_file, signer_private_key):
+        # see https://pycryptodome.readthedocs.io/en/latest/src/signature/signature.html for reference
+        with open(file_to_sign, 'rb') as f:
+            data = f.read()
+        hash_object = SHA384.new(data)
+        signature = pkcs1_15.new(signer_private_key).sign(hash_object)
+        with open(output_signature_file, 'wb') as f:
+            f.write(signature)
 
-# Press the green button in the gutter to run the script.
+    @staticmethod
+    def verify_signature(signed_file, signature_file, signer_public_key):
+        # see https://pycryptodome.readthedocs.io/en/latest/src/signature/signature.html for reference
+        verifier = pkcs1_15.new(signer_public_key)
+        with open(signed_file, 'rb') as f:
+            data = f.read()
+        hash_object = SHA384.new(data)
+        try:
+            verifier.verify(hash_object, open(signature_file, 'rb').read())
+        except (ValueError, TypeError):
+            print("Signature is not valid.")
+
+
 if __name__ == '__main__':
     encryptor = Encryptor()
     # keys = encryptor.generate_key_pair()
@@ -122,4 +150,7 @@ if __name__ == '__main__':
 
     public_key = encryptor.read_key("public.pem")
     encryptor.encrypt_file("wiosna.txt", "wiosna_encrypted.bin", public_key)
-    encryptor.decrypt_file("wiosna_encrypted.bin", "wiosna1.txt", private_key)
+    encryptor.decrypt_file("wiosna_encrypted.bin", "wiosna_decrypted.txt", private_key)
+
+    encryptor.sign_document("wiosna.txt", "wiosna.sig", private_key)
+    encryptor.verify_signature("wiosna.txt", "wiosna.sig", public_key)

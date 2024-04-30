@@ -42,35 +42,26 @@ class MainWindow(QMainWindow):
         self.layout = QVBoxLayout()
         self.central_widget.setLayout(self.layout)
 
-        self.button_import_private_key = QPushButton("Import private key")
-        self.button_import_private_key.clicked.connect(self.import_private_key)
-        self.layout.addWidget(self.button_import_private_key)
+        self.setup_ui()
 
+    def create_button_section(self, text, function):
+        button = QPushButton(text)
+        button.clicked.connect(function)
+        self.layout.addWidget(button)
+
+    def setup_ui(self):
+        self.create_button_section("Import private key", self.import_private_key)
         self.private_key_label = QLabel("No file selected.")
         self.layout.addWidget(self.private_key_label)
 
-        self.button_import_public_key = QPushButton("Import public key")
-        self.button_import_public_key.clicked.connect(self.import_public_key)
-        self.layout.addWidget(self.button_import_public_key)
-
+        self.create_button_section("Import public key", self.import_public_key)
         self.public_key_label = QLabel("No file selected.")
         self.layout.addWidget(self.public_key_label)
 
-        self.button_sign_file = QPushButton("Sign a file")
-        self.button_sign_file.clicked.connect(self.sign_file)
-        self.layout.addWidget(self.button_sign_file)
-
-        self.button_verify_signature = QPushButton("Verify signature")
-        self.button_verify_signature.clicked.connect(self.verify_signature)
-        self.layout.addWidget(self.button_verify_signature)
-
-        self.button_encrypt_file = QPushButton("Encrypt a file")
-        self.button_encrypt_file.clicked.connect(self.encrypt_file)
-        self.layout.addWidget(self.button_encrypt_file)
-
-        self.button_decrypt_file = QPushButton("Decrypt a file")
-        self.button_decrypt_file.clicked.connect(self.decrypt_file)
-        self.layout.addWidget(self.button_decrypt_file)
+        self.create_button_section("Sign a file", self.sign_file)
+        self.create_button_section("Verify signature", self.verify_signature)
+        self.create_button_section("Encrypt a file", self.encrypt_file)
+        self.create_button_section("Decrypt a file", self.decrypt_file)
 
     def import_private_key(self):
         file_dialog = QFileDialog(self)

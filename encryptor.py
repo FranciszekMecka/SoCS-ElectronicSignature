@@ -1,16 +1,16 @@
+import os.path
+from datetime import datetime
+
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA384
-from Crypto.Util.Padding import pad
-
-from key_manager import KEY_SIZE  # KEY_SIZE is in bytes
-
+from lxml import etree as ET
+import xml.dom.minidom
+import os
 from key_manager import KeyManager
 
 
 class Encryptor:
-    # https://pycryptodome.readthedocs.io/en/latest/src/examples.html#encrypt-data-with-rsa ask how to
-    # handle 'limitless files'
     @staticmethod
     def encrypt_file(file_path_to_encrypt, output_file_path, recipient_public_key):
         with open(file_path_to_encrypt, 'rb') as f:
@@ -37,7 +37,7 @@ class Encryptor:
 
         block_size = cipher_rsa._key.size_in_bytes()
         partitioned_data_encrypted = [data[i:i + block_size] for i in
-                            range(0, len(data), block_size)]
+                                      range(0, len(data), block_size)]
 
         partitioned_data = []
         for value in partitioned_data_encrypted:
@@ -67,19 +67,36 @@ class Encryptor:
         hash_object = SHA384.new(data)
         try:
             verifier.verify(hash_object, open(signature_file, 'rb').read())
+            return True
         except (ValueError, TypeError):
             print("Signature is not valid.")
+            return False
 
+    @staticmethod
+    def generate_xml_info(file_path, username):
 
-if __name__ == '__main__':
-    encryptor = Encryptor()
-    key_manager = KeyManager()
-    private_key = key_manager.read_key("private_key.pem", '1234')
-    public_key = key_manager.read_key("public_key.pem")
-    print(private_key)
-    print(public_key)
+        # Create the root element
+        root = ET.Element("SignedProperties")
 
-    encryptor.encrypt_file("wiosna.txt", "wiosna_encrypted.bin", public_key)
-    encryptor.decrypt_file("wiosna_encrypted.bin", "wiosna_decrypted.txt", private_key)
-    print(open("wiosna_decrypted.txt", 'r').read())
-    print(len(open("wiosna_encrypted.bin", 'rb').read()))
+        signer_username = ET.SubElement(root, "Signer")
+        signer_username.text = username
+        # Create SignedSignatureProperties element and its children
+        signed_signature_properties = ET.SubElement(root, "SignedSignatureProperties")
+        signing_time = ET.SubElement(signed_signature_properties, "SigningTime")
+        signing_time.text = datetime.now().isoformat()  # Set current timestamp
+        file_name = ET.SubElement(signed_signature_properties, "FileName")
+        file_name.text = os.path.splitext(file_path)[-2]
+        extension = ET.SubElement(signed_signature_properties, "Extension")
+        extension.text = os.path.splitext(file_path)[-1]
+        file_size_bytes = ET.SubElement(signed_signature_properties, "FileSizeBytes")
+        file_size_bytes.text = str(os.path.getsize(file_path))
+        # Serialize the XML tree to a string
+        xml_string = ET.tostring(root, encoding="unicode", method="xml")
+
+        # Print the XML string to the console
+        xml_pretty_string = xml.dom.minidom.parseString(xml_string).toprettyxml(indent="  ")
+
+        with open(file_path + ".xml", 'w') as f:
+            f.write(xml_pretty_string)
+
+        return root

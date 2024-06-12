@@ -73,7 +73,7 @@ class Encryptor:
             return False
 
     @staticmethod
-    def generate_xml_info(file_path, username):
+    def generate_xml_info(file_path, username, xml_output_path):
 
         # Create the root element
         root = ET.Element("SignedProperties")
@@ -96,7 +96,7 @@ class Encryptor:
         # Print the XML string to the console
         xml_pretty_string = xml.dom.minidom.parseString(xml_string).toprettyxml(indent="  ")
 
-        with open(file_path + ".xml", 'w') as f:
+        with open(xml_output_path + ".xml", 'w') as f:
             f.write(xml_pretty_string)
 
         return root

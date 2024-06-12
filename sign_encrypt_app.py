@@ -92,27 +92,37 @@ class MainWindow(QMainWindow):
 
         if file_dialog.exec():
             file_path_to_sign = file_dialog.selectedFiles()[0]
-            self.encryptor.sign_document(file_path_to_sign, file_path_to_sign + ".sig", self.private_key)
+            file_path_output = file_dialog.getExistingDirectory(self.central_widget, "select directory")
+            file_name_with_extension = os.path.basename(file_path_to_sign)
+            self.encryptor.sign_document(file_path_to_sign,
+                                         os.path.join(file_path_output, file_name_with_extension + ".sig"),
+                                         self.private_key)
 
             username, ok = QInputDialog.getText(self, "Input Dialog", "Enter your username:")
             if not ok:
                 return  # User canceled the input dialog
-            self.encryptor.generate_xml_info(file_path_to_sign, username)
+            self.encryptor.generate_xml_info(file_path_to_sign, username,
+                                             os.path.join(file_path_output, file_name_with_extension))
 
     def verify_signature(self):
         if self.public_key is None:
             return
         file_dialog = QFileDialog(self)
         file_dialog.setNameFilter("All files (*)")
-
         if file_dialog.exec():
             file_path = file_dialog.selectedFiles()[0]
-            if self.encryptor.verify_signature(file_path, file_path + ".sig", self.public_key):
-                pd = PopupDialog("Verification successful.")
-                pd.exec()
-            else:
-                pd = PopupDialog("Verification not successful.")
-                pd.exec()
+            file_path_sig = file_dialog.getOpenFileName(self.central_widget, "Select signature file")[0]
+            try:
+                if file_path is not None and file_path_sig is not None and self.encryptor.verify_signature(file_path,
+                                                                                                           file_path_sig,
+                                                                                                           self.public_key):
+                    pd = PopupDialog("Verification successful.")
+                    pd.exec()
+                else:
+                    pd = PopupDialog("Verification not successful.")
+                    pd.exec()
+            except:
+                return
 
     def encrypt_file(self):
         if self.public_key is None:
@@ -122,7 +132,9 @@ class MainWindow(QMainWindow):
 
         if file_dialog.exec():
             file_path = file_dialog.selectedFiles()[0]
-            output_file_path = str(file_path) + '.bin'
+            file_path_output = file_dialog.getExistingDirectory(self.central_widget, "select directory")
+            file_name_with_extension = os.path.basename(file_path)
+            output_file_path = str(os.path.join(file_path_output, file_name_with_extension)) + '.bin'
             self.encryptor.encrypt_file(file_path, output_file_path, self.public_key)
 
     def decrypt_file(self):
@@ -133,7 +145,10 @@ class MainWindow(QMainWindow):
 
         if file_dialog.exec():
             file_path = file_dialog.selectedFiles()[0]
-            self.encryptor.decrypt_file(file_path, file_path.replace(".bin", ".txt"), self.private_key)
+            file_path_output = file_dialog.getExistingDirectory(self.central_widget, "select directory")
+            file_name_with_extension = os.path.basename(file_path)
+            self.encryptor.decrypt_file(file_path, os.path.join(file_path_output, file_name_with_extension),
+                                        self.private_key)
 
 
 if __name__ == "__main__":
